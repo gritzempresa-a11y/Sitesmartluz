@@ -80,7 +80,6 @@ garantir_coluna("economia", "REAL")
 # =========================
 
 def gerar_link_recuperacao(token: str) -> str:
-    # link relativo ao site atual, funciona local e publicado
     return f"?token={token}"
 
 
@@ -95,12 +94,46 @@ def limpar_query_params():
 st.markdown("""
 <style>
 
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"]{
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+
 .block-container{
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
     padding-left: 1.5rem !important;
     padding-right: 1.5rem !important;
     max-width: 1450px;
+    width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+[data-testid="stHorizontalBlock"]{
+    gap: 0.75rem !important;
+    max-width: 100% !important;
+}
+
+[data-testid="column"]{
+    min-width: 0 !important;
+}
+
+.element-container,
+.stMarkdown,
+.stImage,
+.stAltairChart,
+iframe,
+img,
+canvas,
+svg{
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+img{
+    border-radius:12px;
+    max-width:100%;
+    height:auto;
 }
 
 .card{
@@ -128,6 +161,8 @@ st.markdown("""
     padding:10px 25px;
     font-weight:bold;
     border:none;
+    max-width:100% !important;
+    white-space: normal !important;
 }
 
 .stButton>button:hover{
@@ -142,22 +177,24 @@ st.markdown("""
     border-radius:10px;
 }
 
-img{
-    border-radius:12px;
-    max-width:100%;
-    height:auto;
-}
-
 h1, h2, h3{
     word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 @media (max-width: 768px){
+
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"]{
+        overflow-x: hidden !important;
+        width: 100% !important;
+    }
+
     .block-container{
-        padding-left: 0.55rem !important;
-        padding-right: 0.55rem !important;
-        padding-top: 0.35rem !important;
-        padding-bottom: 0.45rem !important;
+        padding-left: 0.7rem !important;
+        padding-right: 0.7rem !important;
+        padding-top: 0.4rem !important;
+        padding-bottom: 0.5rem !important;
+        max-width: 100% !important;
     }
 
     .grafico-fixo{
@@ -172,23 +209,34 @@ h1, h2, h3{
     }
 
     h1{
-        font-size: 2.35rem !important;
-        line-height: 1.05 !important;
-        margin-bottom: 1rem !important;
+        font-size: 1.9rem !important;
+        line-height: 1.1 !important;
+        margin: 0 0 1rem 0 !important;
+        padding: 0 !important;
     }
 
     h2{
-        font-size: 1.6rem !important;
+        font-size: 1.45rem !important;
         line-height: 1.15 !important;
     }
 
     h3{
-        font-size: 1.1rem !important;
+        font-size: 1.05rem !important;
         line-height: 1.2 !important;
     }
 
     p, label, div, span{
         word-break: break-word;
+        overflow-wrap: break-word;
+    }
+
+    [data-testid="stHorizontalBlock"]{
+        flex-wrap: wrap !important;
+    }
+
+    [data-testid="column"]{
+        width: 100% !important;
+        flex: 1 1 100% !important;
     }
 
     .stButton>button{
@@ -217,7 +265,6 @@ if "usuario_email" not in st.session_state:
 if "acesso_contado" not in st.session_state:
     st.session_state.acesso_contado = False
 
-# se abriu com token na URL, vai direto para redefinição
 token_url = st.query_params.get("token")
 if token_url:
     st.session_state.page = "redefinir_senha"
