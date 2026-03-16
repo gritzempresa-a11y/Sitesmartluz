@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import os
 import sqlite3
 import secrets
 
@@ -81,8 +80,8 @@ garantir_coluna("economia", "REAL")
 # =========================
 
 def gerar_link_recuperacao(token: str) -> str:
-    base_url = os.getenv("APP_URL", "http://localhost:8501")
-    return f"{base_url}?token={token}"
+    # link relativo ao site atual, funciona local e publicado
+    return f"?token={token}"
 
 
 def limpar_query_params():
@@ -145,14 +144,20 @@ st.markdown("""
 
 img{
     border-radius:12px;
+    max-width:100%;
+    height:auto;
+}
+
+h1, h2, h3{
+    word-break: break-word;
 }
 
 @media (max-width: 768px){
     .block-container{
-        padding-left: 0.4rem !important;
-        padding-right: 0.4rem !important;
-        padding-top: 0.2rem !important;
-        padding-bottom: 0.5rem !important;
+        padding-left: 0.55rem !important;
+        padding-right: 0.55rem !important;
+        padding-top: 0.35rem !important;
+        padding-bottom: 0.45rem !important;
     }
 
     .grafico-fixo{
@@ -165,8 +170,31 @@ img{
         min-height:auto;
         margin-bottom:10px;
     }
-}
 
+    h1{
+        font-size: 2.35rem !important;
+        line-height: 1.05 !important;
+        margin-bottom: 1rem !important;
+    }
+
+    h2{
+        font-size: 1.6rem !important;
+        line-height: 1.15 !important;
+    }
+
+    h3{
+        font-size: 1.1rem !important;
+        line-height: 1.2 !important;
+    }
+
+    p, label, div, span{
+        word-break: break-word;
+    }
+
+    .stButton>button{
+        width: 100% !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -369,7 +397,7 @@ elif st.session_state.page == "esqueci_senha":
             link = gerar_link_recuperacao(token)
 
             st.success("Link de recuperação gerado com sucesso.")
-            st.markdown(f"[Clique aqui para redefinir a senha]({link})")
+            st.markdown(f"### [Clique aqui para redefinir a senha]({link})")
             st.text(link)
 
     if st.button("Voltar para login"):
@@ -552,10 +580,6 @@ elif st.session_state.page == "diagnostico":
         if maquina_lavar == "Selecione":
             st.warning("⚠️ Responda todas as perguntas antes de gerar o diagnóstico.")
             st.stop()
-
-        # =========================
-        # SCORE MAIS REALISTA
-        # =========================
 
         score_consumo = 0
 
