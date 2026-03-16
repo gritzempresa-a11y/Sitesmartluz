@@ -280,9 +280,7 @@ if st.session_state.page == "home":
         conn.commit()
         st.session_state.acesso_contado = True
 
-    col_capa = st.columns([0.02, 0.96, 0.02])[1]
-    with col_capa:
-        st.image("capa_smartluz.png", use_container_width=True)
+    st.image("capa_smartluz.png", use_container_width=True)
 
     col1, col2, col3 = st.columns([5, 1, 1])
 
