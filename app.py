@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import sqlite3
 import secrets
+import os
+import shutil
+from datetime import datetime
 
 import altair as alt
 import pandas as pd
@@ -9,10 +12,24 @@ import streamlit as st
 st.set_page_config(page_title="Smart Luz", layout="wide")
 
 # =========================
+# CAMINHOS DO BANCO E BACKUP
+# =========================
+
+DB_PATH = "/tmp/usuarios.db"
+BACKUP_DIR = "backups"
+BACKUP_ATUAL = os.path.join(BACKUP_DIR, "backup_atual.db")
+
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+# restaura automaticamente se o banco sumiu e houver backup
+if not os.path.exists(DB_PATH) and os.path.exists(BACKUP_ATUAL):
+    shutil.copy(BACKUP_ATUAL, DB_PATH)
+
+# =========================
 # BANCO DE DADOS
 # =========================
 
-conn = sqlite3.connect("usuarios.db", check_same_thread=False)
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -74,7 +91,6 @@ garantir_coluna("status", "TEXT")
 garantir_coluna("valor_conta", "REAL")
 garantir_coluna("economia", "REAL")
 
-
 # =========================
 # FUNÇÕES AUXILIARES
 # =========================
@@ -86,6 +102,16 @@ def gerar_link_recuperacao(token: str) -> str:
 def limpar_query_params():
     st.query_params.clear()
 
+
+def criar_backup():
+    try:
+        if os.path.exists(DB_PATH):
+            data_hora = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_backup = os.path.join(BACKUP_DIR, f"backup_{data_hora}.db")
+            shutil.copy(DB_PATH, nome_backup)
+            shutil.copy(DB_PATH, BACKUP_ATUAL)
+    except Exception as e:
+        print("Erro ao criar backup:", e)
 
 # =========================
 # CSS
@@ -355,6 +381,7 @@ elif st.session_state.page == "cadastro":
             )
 
             conn.commit()
+            criar_backup()
 
             st.success("Usuário criado com sucesso!")
 
@@ -440,6 +467,7 @@ elif st.session_state.page == "esqueci_senha":
                 (email_rec, token)
             )
             conn.commit()
+            criar_backup()
 
             link = gerar_link_recuperacao(token)
 
@@ -488,6 +516,7 @@ elif st.session_state.page == "redefinir_senha":
                     )
                     cursor.execute("DELETE FROM reset_tokens WHERE token=?", (token,))
                     conn.commit()
+                    criar_backup()
                     limpar_query_params()
                     st.success("Senha alterada com sucesso.")
                     if st.button("Ir para login"):
@@ -845,6 +874,7 @@ elif st.session_state.page == "diagnostico":
 
         cursor.execute("UPDATE estatisticas SET formularios = formularios + 1")
         conn.commit()
+        criar_backup()
 
         st.session_state.resultado = {
             "nivel": nivel,
