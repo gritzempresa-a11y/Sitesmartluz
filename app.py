@@ -980,15 +980,17 @@ elif st.session_state.page == "admin":
     cursor.execute("SELECT COUNT(*) FROM diagnosticos")
     diagnosticos = cursor.fetchone()[0]
 
-    cursor.execute("SELECT formularios FROM estatisticas")
+    cursor.execute("SELECT acessos, formularios FROM estatisticas")
     estat = cursor.fetchone()
-    formularios = estat[0] if estat else 0
+    acessos = estat[0] if estat else 0
+    formularios = estat[1] if estat else 0
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     col1.metric("Usuários cadastrados", usuarios)
     col2.metric("Diagnósticos realizados", diagnosticos)
-    col3.metric("Formulários enviados", formularios)
+    col3.metric("Acessos", acessos)
+    col4.metric("Formulários enviados", formularios)
 
     st.bar_chart({
         "Usuários": [usuarios],
