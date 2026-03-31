@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-import sqlite3
 import secrets
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+from sqlalchemy import text
 
 st.set_page_config(page_title="Smart Luz", layout="wide")
 
@@ -12,11 +12,91 @@ st.set_page_config(page_title="Smart Luz", layout="wide")
 # BANCO DE DADOS
 # =========================
 
-conn = sqlite3.connect("usuarios.db", check_same_thread=False)
-cursor = conn.cursor()
+@st.cache_resource
+def get_connection():
+    return st.connection("smartluz_db", type="sql")
+
+
+sql_conn = get_connection()
+
+
+class CursorCompat:
+    def __init__(self, connection):
+        self.connection = connection
+        self._last_result = []
+
+    def _convert_query(self, query, params):
+        if params is None:
+            return query, {}
+
+        if isinstance(params, (list, tuple)):
+            parts = query.split("?")
+            if len(parts) - 1 != len(params):
+                raise ValueError("Quantidade de parâmetros diferente da quantidade de placeholders.")
+
+            new_sql = []
+            new_params = {}
+
+            for i, part in enumerate(parts[:-1]):
+                new_sql.append(part)
+                key = f"p{i}"
+                new_sql.append(f":{key}")
+                new_params[key] = params[i]
+
+            new_sql.append(parts[-1])
+            return "".join(new_sql), new_params
+
+        return query, params
+
+    def execute(self, query, params=None):
+        query_clean = query.strip().upper()
+
+        # Compatibilidade com PRAGMA do SQLite
+        if query_clean == "PRAGMA TABLE_INFO(DIAGNOSTICOS)":
+            info_sql = """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'diagnosticos'
+                ORDER BY ordinal_position
+            """
+            with self.connection.session as s:
+                result = s.execute(text(info_sql))
+                cols = result.fetchall()
+                self._last_result = [(i, row[0]) for i, row in enumerate(cols)]
+            return self
+
+        sql_converted, params_converted = self._convert_query(query, params)
+
+        with self.connection.session as s:
+            result = s.execute(text(sql_converted), params_converted)
+            if result.returns_rows:
+                self._last_result = [tuple(row) for row in result.fetchall()]
+            else:
+                self._last_result = []
+                s.commit()
+
+        return self
+
+    def fetchone(self):
+        if not self._last_result:
+            return None
+        return self._last_result[0]
+
+    def fetchall(self):
+        return self._last_result
+
+
+class ConnCompat:
+    def commit(self):
+        pass
+
+
+conn = ConnCompat()
+cursor = CursorCompat(sql_conn)
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS usuarios(
+id BIGSERIAL PRIMARY KEY,
 nome TEXT,
 email TEXT UNIQUE,
 senha TEXT
@@ -25,7 +105,7 @@ senha TEXT
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS diagnosticos(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+id BIGSERIAL PRIMARY KEY,
 usuario TEXT,
 pessoas INTEGER,
 eletrodomesticos INTEGER,
@@ -38,6 +118,7 @@ economia REAL
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS estatisticas(
+id BIGSERIAL PRIMARY KEY,
 acessos INTEGER,
 formularios INTEGER
 )
@@ -45,6 +126,7 @@ formularios INTEGER
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS reset_tokens(
+id BIGSERIAL PRIMARY KEY,
 email TEXT,
 token TEXT UNIQUE
 )
@@ -54,7 +136,7 @@ conn.commit()
 
 cursor.execute("SELECT COUNT(*) FROM estatisticas")
 if cursor.fetchone()[0] == 0:
-    cursor.execute("INSERT INTO estatisticas (acessos, formularios) VALUES (0, 0)")
+    cursor.execute("INSERT INTO estatisticas (acessos, formularios) VALUES (?, ?)", (0, 0))
     conn.commit()
 
 
@@ -73,6 +155,35 @@ garantir_coluna("lampadas", "INTEGER")
 garantir_coluna("status", "TEXT")
 garantir_coluna("valor_conta", "REAL")
 garantir_coluna("economia", "REAL")
+
+
+# =========================
+# CACHE DE CONSULTAS
+# =========================
+
+@st.cache_data(ttl=30)
+def get_admin_counts():
+    with sql_conn.session as s:
+        usuarios = s.execute(text("SELECT COUNT(*) FROM usuarios")).scalar() or 0
+        diagnosticos = s.execute(text("SELECT COUNT(*) FROM diagnosticos")).scalar() or 0
+        formularios = s.execute(text("SELECT formularios FROM estatisticas ORDER BY id LIMIT 1")).scalar()
+        formularios = formularios if formularios is not None else 0
+    return usuarios, diagnosticos, formularios
+
+
+@st.cache_data(ttl=30)
+def get_admin_dados():
+    with sql_conn.session as s:
+        result = s.execute(text("""
+            SELECT usuario, pessoas, eletrodomesticos, lampadas, status, valor_conta, economia
+            FROM diagnosticos
+        """))
+        return [tuple(row) for row in result.fetchall()]
+
+
+def limpar_cache_admin():
+    get_admin_counts.clear()
+    get_admin_dados.clear()
 
 
 # =========================
@@ -279,6 +390,7 @@ if st.session_state.page == "home":
         cursor.execute("UPDATE estatisticas SET acessos = acessos + 1")
         conn.commit()
         st.session_state.acesso_contado = True
+        limpar_cache_admin()
 
     st.image("capa_smartluz.png", use_container_width=True)
 
@@ -350,11 +462,12 @@ elif st.session_state.page == "cadastro":
 
         try:
             cursor.execute(
-                "INSERT INTO usuarios VALUES (?,?,?)",
+                "INSERT INTO usuarios (nome, email, senha) VALUES (?,?,?)",
                 (nome, email, senha)
             )
 
             conn.commit()
+            limpar_cache_admin()
 
             st.success("Usuário criado com sucesso!")
 
@@ -394,7 +507,7 @@ elif st.session_state.page == "login":
             st.rerun()
 
         cursor.execute(
-            "SELECT * FROM usuarios WHERE email=? AND senha=?",
+            "SELECT nome, email, senha FROM usuarios WHERE email=? AND senha=?",
             (email, senha)
         )
 
@@ -427,7 +540,7 @@ elif st.session_state.page == "esqueci_senha":
     email_rec = st.text_input("Digite o e-mail cadastrado")
 
     if st.button("Gerar link de recuperação"):
-        cursor.execute("SELECT * FROM usuarios WHERE email=?", (email_rec,))
+        cursor.execute("SELECT nome, email, senha FROM usuarios WHERE email=?", (email_rec,))
         usuario = cursor.fetchone()
 
         if not usuario:
@@ -489,6 +602,7 @@ elif st.session_state.page == "redefinir_senha":
                     cursor.execute("DELETE FROM reset_tokens WHERE token=?", (token,))
                     conn.commit()
                     limpar_query_params()
+                    limpar_cache_admin()
                     st.success("Senha alterada com sucesso.")
                     if st.button("Ir para login"):
                         st.session_state.page = "login"
@@ -845,6 +959,7 @@ elif st.session_state.page == "diagnostico":
 
         cursor.execute("UPDATE estatisticas SET formularios = formularios + 1")
         conn.commit()
+        limpar_cache_admin()
 
         st.session_state.resultado = {
             "nivel": nivel,
@@ -974,15 +1089,7 @@ elif st.session_state.page == "admin":
 
     st.title("Painel Administrador")
 
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    usuarios = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM diagnosticos")
-    diagnosticos = cursor.fetchone()[0]
-
-    cursor.execute("SELECT formularios FROM estatisticas")
-    estat = cursor.fetchone()
-    formularios = estat[0] if estat else 0
+    usuarios, diagnosticos, formularios = get_admin_counts()
 
     col1, col2, col3 = st.columns(3)
 
@@ -998,12 +1105,7 @@ elif st.session_state.page == "admin":
     st.markdown("---")
     st.subheader("Consumo geral dos usuários")
 
-    cursor.execute("""
-    SELECT usuario, pessoas, eletrodomesticos, lampadas, status, valor_conta, economia
-    FROM diagnosticos
-    """)
-
-    dados = cursor.fetchall()
+    dados = get_admin_dados()
 
     df = pd.DataFrame(dados, columns=[
         "Usuario",
