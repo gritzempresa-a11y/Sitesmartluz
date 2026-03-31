@@ -94,67 +94,72 @@ class ConnCompat:
 conn = ConnCompat()
 cursor = CursorCompat(sql_conn)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS usuarios(
-id BIGSERIAL PRIMARY KEY,
-nome TEXT,
-email TEXT UNIQUE,
-senha TEXT
-)
-""")
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS diagnosticos(
-id BIGSERIAL PRIMARY KEY,
-usuario TEXT,
-pessoas INTEGER,
-eletrodomesticos INTEGER,
-lampadas INTEGER,
-status TEXT,
-valor_conta REAL,
-economia REAL
-)
-""")
+@st.cache_resource
+def init_database():
+    local_cursor = CursorCompat(sql_conn)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS estatisticas(
-id BIGSERIAL PRIMARY KEY,
-acessos INTEGER,
-formularios INTEGER
-)
-""")
+    local_cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios(
+    id BIGSERIAL PRIMARY KEY,
+    nome TEXT,
+    email TEXT UNIQUE,
+    senha TEXT
+    )
+    """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS reset_tokens(
-id BIGSERIAL PRIMARY KEY,
-email TEXT,
-token TEXT UNIQUE
-)
-""")
+    local_cursor.execute("""
+    CREATE TABLE IF NOT EXISTS diagnosticos(
+    id BIGSERIAL PRIMARY KEY,
+    usuario TEXT,
+    pessoas INTEGER,
+    eletrodomesticos INTEGER,
+    lampadas INTEGER,
+    status TEXT,
+    valor_conta REAL,
+    economia REAL
+    )
+    """)
 
-conn.commit()
+    local_cursor.execute("""
+    CREATE TABLE IF NOT EXISTS estatisticas(
+    id BIGSERIAL PRIMARY KEY,
+    acessos INTEGER,
+    formularios INTEGER
+    )
+    """)
 
-cursor.execute("SELECT COUNT(*) FROM estatisticas")
-if cursor.fetchone()[0] == 0:
-    cursor.execute("INSERT INTO estatisticas (acessos, formularios) VALUES (?, ?)", (0, 0))
-    conn.commit()
+    local_cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reset_tokens(
+    id BIGSERIAL PRIMARY KEY,
+    email TEXT,
+    token TEXT UNIQUE
+    )
+    """)
+
+    local_cursor.execute("SELECT COUNT(*) FROM estatisticas")
+    if local_cursor.fetchone()[0] == 0:
+        local_cursor.execute("INSERT INTO estatisticas (acessos, formularios) VALUES (?, ?)", (0, 0))
+
+    local_cursor.execute("PRAGMA table_info(diagnosticos)")
+    colunas = [col[1] for col in local_cursor.fetchall()]
+
+    colunas_necessarias = {
+        "usuario": "TEXT",
+        "pessoas": "INTEGER",
+        "eletrodomesticos": "INTEGER",
+        "lampadas": "INTEGER",
+        "status": "TEXT",
+        "valor_conta": "REAL",
+        "economia": "REAL",
+    }
+
+    for nome_coluna, tipo_sql in colunas_necessarias.items():
+        if nome_coluna not in colunas:
+            local_cursor.execute(f"ALTER TABLE diagnosticos ADD COLUMN {nome_coluna} {tipo_sql}")
 
 
-def garantir_coluna(nome_coluna: str, tipo_sql: str) -> None:
-    cursor.execute("PRAGMA table_info(diagnosticos)")
-    colunas = [col[1] for col in cursor.fetchall()]
-    if nome_coluna not in colunas:
-        cursor.execute(f"ALTER TABLE diagnosticos ADD COLUMN {nome_coluna} {tipo_sql}")
-        conn.commit()
-
-
-garantir_coluna("usuario", "TEXT")
-garantir_coluna("pessoas", "INTEGER")
-garantir_coluna("eletrodomesticos", "INTEGER")
-garantir_coluna("lampadas", "INTEGER")
-garantir_coluna("status", "TEXT")
-garantir_coluna("valor_conta", "REAL")
-garantir_coluna("economia", "REAL")
+init_database()
 
 
 # =========================
